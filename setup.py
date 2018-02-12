@@ -1,6 +1,7 @@
 from distutils.spawn import find_executable
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
+from setuptools_rust import Binding, RustExtension
 
 import re
 import os
@@ -35,19 +36,35 @@ class GPerfingBuildExt(build_ext):
         process_gperf_file("src/html_entities.gperf", "src/html_entities.h")
         build_ext.run(self)
 
-setup(
-    name='snudown',
-    version=version,
-    author='Vicent Marti',
-    author_email='vicent@github.com',
-    license='MIT',
-    test_suite="test_snudown.test_snudown",
-    cmdclass={'build_ext': GPerfingBuildExt,},
-    ext_modules=[
-        Extension(
-            name='snudown',
-            sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
-            include_dirs=['src', 'html']
-        )
-    ],
-)
+use_rust = False
+
+if os.environ.get('RUSTUP_TOOLCHAIN'):
+    use_rust = True
+        
+if not use_rust:
+    setup(
+        name='snudown',
+        version=version,
+        author='Vicent Marti',
+        author_email='vicent@github.com',
+        license='MIT',
+        test_suite="test_snudown.test_snudown",
+        cmdclass={'build_ext': GPerfingBuildExt,},
+        ext_modules=[
+            Extension(
+                name='snudown',
+                sources=['snudown.c'] + c_files_in('src/') + c_files_in('html/'),
+                include_dirs=['src', 'html']
+            )
+        ],
+    )
+else:
+    setup(
+        name='snudown',
+        version=version,
+        rust_extensions=[RustExtension('snudown',
+                                       'rust/Cargo.toml',
+                                       binding=Binding.PyO3)],
+        # rust extensions are not zip safe, just like C-extensions.
+        zip_safe=False
+    )

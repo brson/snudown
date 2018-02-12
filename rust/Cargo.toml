@@ -1,0 +1,19 @@
+[package]
+name = "snudown"
+version = "0.1.0"
+authors = ["Brian Anderson <andersrb@gmail.com>"]
+
+[lib]
+name = "snudown"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.36"
+
+[dependencies.pyo3]
+version = "0.2"
+default-features = false
+features = ["extension-module"]
+
+[build-dependencies]
+cc = "1.0"

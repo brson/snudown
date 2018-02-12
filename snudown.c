@@ -10,6 +10,10 @@
 enum snudown_renderer_mode {
 	RENDERER_USERTEXT = 0,
 	RENDERER_WIKI,
+#ifdef RUST
+	RENDERER_RUST_USERTEXT,
+	RENDERER_RUST_WIKI,
+#endif
 	RENDERER_COUNT
 };
 
@@ -40,6 +44,13 @@ static struct module_state usertext_toc_state;
 static struct module_state wiki_toc_state;
 static struct module_state usertext_state;
 static struct module_state wiki_state;
+
+#ifdef RUST
+static struct module_state rust_usertext_toc_state;
+static struct module_state rust_wiki_toc_state;
+static struct module_state rust_usertext_state;
+static struct module_state rust_wiki_state;
+#endif
 
 /* The module doc strings */
 PyDoc_STRVAR(snudown_module__doc__, "When does the narwhal bacon? At Sundown.");
@@ -81,10 +92,21 @@ snudown_link_attr(struct buf *ob, const struct buf *link, void *opaque)
 	}
 }
 
+#ifdef RUST
+extern struct sd_markdown *
+rsd_markdown_new(
+	unsigned int extensions,
+	size_t max_nesting,
+	size_t max_table_cols,
+	const struct sd_callbacks *callbacks,
+	void *opaque);
+#endif
+
 static struct sd_markdown* make_custom_renderer(struct module_state* state,
 												const unsigned int renderflags,
 												const unsigned int markdownflags,
-												int toc_renderer) {
+												int toc_renderer,
+												int rust) {
 	if(toc_renderer) {
 		sdhtml_toc_renderer(&state->callbacks,
 			(struct html_renderopt *)&state->options);
@@ -98,30 +120,63 @@ static struct sd_markdown* make_custom_renderer(struct module_state* state,
 	state->options.html.html_element_whitelist = html_element_whitelist;
 	state->options.html.html_attr_whitelist = html_attr_whitelist;
 
-	return sd_markdown_new(
-		markdownflags,
-		16,
-		64,
-		&state->callbacks,
-		&state->options
-	);
+    if (!rust) {
+	  return sd_markdown_new(
+       		markdownflags,
+       		16,
+       		64,
+       		&state->callbacks,
+       		&state->options
+       	);
+    } else {
+#ifdef RUST
+       	return rsd_markdown_new(
+       		markdownflags,
+       		16,
+       		64,
+       		&state->callbacks,
+       		&state->options
+        );
+#else
+    	abort("rust not configured");
+    	return NULL;
+#endif
+	}
 }
 
 void init_default_renderer(PyObject *module) {
 	PyModule_AddIntConstant(module, "RENDERER_USERTEXT", RENDERER_USERTEXT);
-	sundown[RENDERER_USERTEXT].main_renderer = make_custom_renderer(&usertext_state, snudown_default_render_flags, snudown_default_md_flags, 0);
-	sundown[RENDERER_USERTEXT].toc_renderer = make_custom_renderer(&usertext_toc_state, snudown_default_render_flags, snudown_default_md_flags, 1);
+	sundown[RENDERER_USERTEXT].main_renderer = make_custom_renderer(&usertext_state, snudown_default_render_flags, snudown_default_md_flags, 0, 0);
+	sundown[RENDERER_USERTEXT].toc_renderer = make_custom_renderer(&usertext_toc_state, snudown_default_render_flags, snudown_default_md_flags, 1, 0);
 	sundown[RENDERER_USERTEXT].state = &usertext_state;
 	sundown[RENDERER_USERTEXT].toc_state = &usertext_toc_state;
 }
 
 void init_wiki_renderer(PyObject *module) {
 	PyModule_AddIntConstant(module, "RENDERER_WIKI", RENDERER_WIKI);
-	sundown[RENDERER_WIKI].main_renderer = make_custom_renderer(&wiki_state, snudown_wiki_render_flags, snudown_default_md_flags, 0);
-	sundown[RENDERER_WIKI].toc_renderer = make_custom_renderer(&wiki_toc_state, snudown_wiki_render_flags, snudown_default_md_flags, 1);
+	sundown[RENDERER_WIKI].main_renderer = make_custom_renderer(&wiki_state, snudown_wiki_render_flags, snudown_default_md_flags, 0, 0);
+	sundown[RENDERER_WIKI].toc_renderer = make_custom_renderer(&wiki_toc_state, snudown_wiki_render_flags, snudown_default_md_flags, 1, 0);
 	sundown[RENDERER_WIKI].state = &wiki_state;
 	sundown[RENDERER_WIKI].toc_state = &wiki_toc_state;
 }
+
+#ifdef RUST
+void init_rust_default_renderer(PyObject *module) {
+	PyModule_AddIntConstant(module, "RENDERER_RUST_USERTEXT", RENDERER_RUST_USERTEXT);
+	sundown[RENDERER_USERTEXT].main_renderer = make_custom_renderer(&usertext_state, snudown_default_render_flags, snudown_default_md_flags, 0, 1);
+	sundown[RENDERER_USERTEXT].toc_renderer = make_custom_renderer(&usertext_toc_state, snudown_default_render_flags, snudown_default_md_flags, 1, 1);
+	sundown[RENDERER_USERTEXT].state = &rust_usertext_state;
+	sundown[RENDERER_USERTEXT].toc_state = &rust_usertext_toc_state;
+}
+
+void init_rust_wiki_renderer(PyObject *module) {
+	PyModule_AddIntConstant(module, "RENDERER_RUST_WIKI", RENDERER_RUST_WIKI);
+	sundown[RENDERER_WIKI].main_renderer = make_custom_renderer(&wiki_state, snudown_wiki_render_flags, snudown_default_md_flags, 0, 1);
+	sundown[RENDERER_WIKI].toc_renderer = make_custom_renderer(&wiki_toc_state, snudown_wiki_render_flags, snudown_default_md_flags, 1, 1);
+	sundown[RENDERER_WIKI].state = &rust_wiki_state;
+	sundown[RENDERER_WIKI].toc_state = &rust_wiki_toc_state;
+}
+#endif
 
 static PyObject *
 snudown_md(PyObject *self, PyObject *args, PyObject *kwargs)
@@ -196,7 +251,13 @@ static PyMethodDef snudown_methods[] = {
 	{NULL, NULL, 0, NULL} /* Sentinel */
 };
 
-PyMODINIT_FUNC initsnudown(void)
+#ifndef RUST
+#define INIT_FN initsnudown
+#else
+#define INIT_FN initsnudown_real
+#endif
+
+PyMODINIT_FUNC INIT_FN(void)
 {
 	PyObject *module;
 
@@ -206,6 +267,10 @@ PyMODINIT_FUNC initsnudown(void)
 
 	init_default_renderer(module);
 	init_wiki_renderer(module);
+#ifdef RUST	
+	init_rust_default_renderer(module);
+	init_rust_wiki_renderer(module);
+#endif
 
 	/* Version */
 	PyModule_AddStringConstant(module, "__version__", SNUDOWN_VERSION);
